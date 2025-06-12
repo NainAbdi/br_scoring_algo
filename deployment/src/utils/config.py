@@ -11,7 +11,7 @@ SCORING_WEIGHTS: Dict[str, float] = {
 MAX_ALLOWED_TIME: int = 3600
 
 # Gemini API configuration
-GEMINI_MODEL_NAME: str = "models/gemini-2.5-flash-preview-04-17"
+GEMINI_MODEL_NAME: str = "models/gemini-2.5-pro-preview-04-17"
 
 # Written answer evaluation criteria
 WRITTEN_ANSWER_CRITERIA: Dict[str, float] = {
