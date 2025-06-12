@@ -4,13 +4,13 @@ from typing import List, Dict, Optional
 @dataclass
 class WrittenAnswer:
     question_id: str
-    answer_text: str
-    question_context: Optional[str] = None
+    answer: str
+    question: str
 
 @dataclass
 class AssessmentSubmission:
-    time_taken: int  # in seconds
-    main_question_correct: bool
+    time_elapsed: int  # in seconds
+    main_question_score: float  # score from 0 to 1
     written_answers: List[WrittenAnswer]
 
 @dataclass

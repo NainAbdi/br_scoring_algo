@@ -11,24 +11,24 @@ from src.scoring.gemini_evaluator import GeminiEvaluator
 async def main():
     # Create a sample assessment submission
     submission = AssessmentSubmission(
-        time_taken=1800,  # 30 minutes
-        main_question_correct=True,
+        time_elapsed=1800,  # 30 minutes
+        main_question_score=1.0,  # Perfect score for main question
         written_answers=[
             WrittenAnswer(
                 question_id="q1",
-                answer_text="The purpose of version control is to track changes in code over time, "
-                          "enable collaboration between developers, and maintain a history of "
-                          "modifications. It helps teams work together efficiently and provides "
-                          "a safety net for code changes.",
-                question_context="What is the purpose of version control?"
+                question="What is the purpose of version control?",
+                answer="The purpose of version control is to track changes in code over time, "
+                      "enable collaboration between developers, and maintain a history of "
+                      "modifications. It helps teams work together efficiently and provides "
+                      "a safety net for code changes."
             ),
             WrittenAnswer(
                 question_id="q2",
-                answer_text="API stands for Application Programming Interface. It's a set of rules "
-                          "and protocols that allows different software applications to communicate "
-                          "with each other. APIs define the methods and data formats that "
-                          "applications can use to request and exchange information.",
-                question_context="What is an API and what is its purpose?"
+                question="What is an API and what is its purpose?",
+                answer="API stands for Application Programming Interface. It's a set of rules "
+                      "and protocols that allows different software applications to communicate "
+                      "with each other. APIs define the methods and data formats that "
+                      "applications can use to request and exchange information."
             )
         ]
     )

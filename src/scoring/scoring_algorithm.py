@@ -19,10 +19,10 @@ class ScoringAlgorithm:
         Calculate the total score for an assessment submission.
         """
         # Calculate time score
-        time_score = self._calculate_time_score(submission.time_taken)
+        time_score = self._calculate_time_score(submission.time_elapsed)
         
-        # Calculate main question score
-        main_question_score = self._evaluate_main_question(submission.main_question_correct)
+        # Calculate main question score (now using the float value directly)
+        main_question_score = submission.main_question_score
         
         # Calculate written answers score
         written_answers_score = await self._evaluate_written_answers(
@@ -46,20 +46,14 @@ class ScoringAlgorithm:
             }
         )
     
-    def _calculate_time_score(self, time_taken: int) -> float:
+    def _calculate_time_score(self, time_elapsed: int) -> float:
         """
         Calculate score based on time taken.
         Faster completion results in higher score.
         """
-        if time_taken <= self.max_allowed_time:
-            return 1.0 - (time_taken / self.max_allowed_time)
+        if time_elapsed <= self.max_allowed_time:
+            return 1.0 - (time_elapsed / self.max_allowed_time)
         return 0.0
-    
-    def _evaluate_main_question(self, is_correct: bool) -> float:
-        """
-        Evaluate the main question answer.
-        """
-        return 1.0 if is_correct else 0.0
     
     async def _evaluate_written_answers(
         self, 
@@ -75,8 +69,8 @@ class ScoringAlgorithm:
         total_score = 0
         for answer in answers:
             evaluation = await gemini_evaluator.evaluate_answer(
-                answer.answer_text,
-                answer.question_context
+                answer.answer,
+                answer.question
             )
             total_score += evaluation["total_score"]
         
