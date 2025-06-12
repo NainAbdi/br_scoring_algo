@@ -1,6 +1,11 @@
 import os
+import sys
 import asyncio
 from dotenv import load_dotenv
+
+# Add the project root directory to Python path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from src.scoring.gemini_evaluator import GeminiEvaluator
 from src.utils.config import GEMINI_MODEL_NAME
 

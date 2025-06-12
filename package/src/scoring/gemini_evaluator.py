@@ -1,6 +1,7 @@
 import os
+import json
 from typing import Dict
-import google.generativeai as genai
+import requests
 from ..utils.config import GEMINI_MODEL_NAME, WRITTEN_ANSWER_CRITERIA
 
 class GeminiEvaluator:
@@ -9,12 +10,12 @@ class GeminiEvaluator:
         if not self.api_key:
             raise ValueError("Gemini API key not found. Please set GEMINI_API_KEY environment variable.")
         
-        # Configure with REST transport explicitly
-        genai.configure(
-            api_key=self.api_key,
-            transport="rest"  # Explicitly use REST transport
-        )
-        self.model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+        # Configure API endpoint and headers
+        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent"
+        self.headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key
+        }
     
     async def evaluate_answer(
         self, 
@@ -28,17 +29,41 @@ class GeminiEvaluator:
         prompt = self._create_evaluation_prompt(answer_text, question_context)
         
         try:
-            # Use generate_content with REST transport and specific generation config
-            response = self.model.generate_content(
-                prompt,
-                generation_config={
-                    "temperature": 0.3,  # Lower temperature for more consistent scoring
-                    "top_p": 0.8,
-                    "top_k": 40
+            # Prepare the request payload
+            payload = {
+                "contents": [{
+                    "parts": [{
+                        "text": prompt
+                    }]
+                }],
+                "generationConfig": {
+                    "temperature": 0.2,  # Lower temperature for more consistent scoring
+                    "topP": 0.8,
+                    "topK": 40
                 }
+            }
+            
+            # Make the API request
+            response = requests.post(
+                self.api_url,
+                headers=self.headers,
+                json=payload
             )
-            evaluation = self._parse_evaluation(response.text)
+            response.raise_for_status()  # Raise exception for bad status codes
+            
+            # Parse the response
+            result = response.json()
+            if "candidates" not in result or not result["candidates"]:
+                raise Exception("No response from Gemini API")
+                
+            evaluation_text = result["candidates"][0]["content"]["parts"][0]["text"]
+            evaluation = self._parse_evaluation(evaluation_text)
             return evaluation
+            
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"API request failed: {str(e)}")
+        except json.JSONDecodeError as e:
+            raise Exception(f"Failed to parse API response: {str(e)}")
         except Exception as e:
             raise Exception(f"Failed to evaluate answer: {str(e)}")
     
