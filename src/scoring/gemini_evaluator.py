@@ -102,15 +102,16 @@ class GeminiEvaluator:
                     except ValueError:
                         continue  # Skip lines that don't have valid scores
             
+            # Get the individual scores
+            technical_accuracy = scores.get("technical accuracy", 0)
+            clarity = scores.get("clarity", 0)
+            
             # Calculate total score based on weights
-            total_score = sum(
-                scores.get(criterion, 0) * weight 
-                for criterion, weight in WRITTEN_ANSWER_CRITERIA.items()
-            )
+            total_score = (technical_accuracy * WRITTEN_ANSWER_CRITERIA["technical_accuracy"]) + (clarity * WRITTEN_ANSWER_CRITERIA["clarity"])
             
             return {
-                "technical_accuracy": scores.get("technical accuracy", 0),
-                "clarity": scores.get("clarity", 0),
+                "technical_accuracy": technical_accuracy,
+                "clarity": clarity,
                 "total_score": total_score
             }
         except Exception as e:
