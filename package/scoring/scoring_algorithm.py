@@ -1,9 +1,9 @@
 import uuid
 from typing import Dict, Optional
 from .assessment_score import AssessmentSubmission, AssessmentScore, WrittenAnswer
-from .gemini_evaluator import GeminiEvaluator
+from .openai_evaluator import OpenAIEvaluator
 from .skill_scorer import SkillScorer
-from utils.config import SCORING_WEIGHTS, MAX_ALLOWED_TIME
+from ..utils.config import SCORING_WEIGHTS, MAX_ALLOWED_TIME
 
 class ScoringAlgorithm:
     def __init__(self):
@@ -18,7 +18,7 @@ class ScoringAlgorithm:
     async def calculate_total_score(
         self, 
         submission: AssessmentSubmission, 
-        gemini_evaluator: GeminiEvaluator,
+        openai_evaluator: OpenAIEvaluator,
         use_skill_based_scoring: bool = True
     ) -> AssessmentScore:
         """
@@ -26,7 +26,7 @@ class ScoringAlgorithm:
         
         Args:
             submission: The assessment submission data
-            gemini_evaluator: The AI evaluator for written answers
+            openai_evaluator: The AI evaluator for written answers
             use_skill_based_scoring: Whether to use new skill-based scoring (default: True)
         
         Returns:
@@ -36,7 +36,7 @@ class ScoringAlgorithm:
         assessment_id = str(uuid.uuid4())
         
         # Calculate legacy scores for backward compatibility
-        legacy_breakdown = await self._calculate_legacy_breakdown(submission, gemini_evaluator)
+        legacy_breakdown = await self._calculate_legacy_breakdown(submission, openai_evaluator)
         legacy_total_score = (
             (legacy_breakdown["time_score"] * self.time_weight) +
             (legacy_breakdown["main_question_score"] * self.main_question_weight) +
@@ -52,7 +52,7 @@ class ScoringAlgorithm:
         
         # Add skill-based scoring if requested
         if use_skill_based_scoring:
-            skill_results = await self.skill_scorer.calculate_all_skill_scores(submission, gemini_evaluator)
+            skill_results = await self.skill_scorer.calculate_all_skill_scores(submission, openai_evaluator)
             
             # Extract skill scores and component breakdowns
             skill_scores = {skill: data["score"] for skill, data in skill_results.items()}
@@ -70,7 +70,7 @@ class ScoringAlgorithm:
     async def _calculate_legacy_breakdown(
         self, 
         submission: AssessmentSubmission, 
-        gemini_evaluator: GeminiEvaluator
+        openai_evaluator: OpenAIEvaluator
     ) -> Dict[str, float]:
         """
         Calculate legacy breakdown for backward compatibility.
@@ -84,7 +84,7 @@ class ScoringAlgorithm:
         # Calculate written answers score using legacy evaluation
         written_answers_score = await self._evaluate_written_answers_legacy(
             submission.written_answers, 
-            gemini_evaluator
+            openai_evaluator
         )
         
         return {
@@ -105,7 +105,7 @@ class ScoringAlgorithm:
     async def _evaluate_written_answers_legacy(
         self, 
         answers: list[WrittenAnswer], 
-        gemini_evaluator: GeminiEvaluator
+        openai_evaluator: OpenAIEvaluator
     ) -> float:
         """
         Evaluate all written answers using legacy criteria and return average score.
@@ -115,7 +115,7 @@ class ScoringAlgorithm:
         
         total_score = 0
         for answer in answers:
-            evaluation = await gemini_evaluator.evaluate_answer(
+            evaluation = await openai_evaluator.evaluate_answer(
                 answer.answer,
                 answer.question,
                 use_legacy_criteria=True  # Use legacy evaluation

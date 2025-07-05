@@ -2,20 +2,21 @@ import os
 import json
 from typing import Dict
 import requests
-from utils.config import GEMINI_MODEL_NAME, WRITTEN_ANSWER_CRITERIA, LEGACY_WRITTEN_ANSWER_CRITERIA
+from ..utils.config import WRITTEN_ANSWER_CRITERIA, LEGACY_WRITTEN_ANSWER_CRITERIA
 
-class GeminiEvaluator:
+class OpenAIEvaluator:
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
-            raise ValueError("Gemini API key not found. Please set GEMINI_API_KEY environment variable.")
+            raise ValueError("OpenAI API key not found. Please set OPENAI_API_KEY environment variable.")
         
         # Configure API endpoint and headers
-        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_NAME}:generateContent"
+        self.api_url = "https://api.openai.com/v1/chat/completions"
         self.headers = {
             "Content-Type": "application/json",
-            "x-goog-api-key": self.api_key
+            "Authorization": f"Bearer {self.api_key}"
         }
+        self.model = "gpt-4o-mini"  # Using GPT-4o-mini for cost efficiency and good performance
     
     async def evaluate_answer(
         self, 
@@ -24,7 +25,7 @@ class GeminiEvaluator:
         use_legacy_criteria: bool = False
     ) -> Dict[str, float]:
         """
-        Evaluate a written answer using Gemini API.
+        Evaluate a written answer using OpenAI API.
         Returns scores for all criteria or legacy criteria based on parameter.
         """
         if use_legacy_criteria:
@@ -45,16 +46,19 @@ class GeminiEvaluator:
         try:
             # Prepare the request payload
             payload = {
-                "contents": [{
-                    "parts": [{
-                        "text": prompt
-                    }]
-                }],
-                "generationConfig": {
-                    "temperature": 0.2,  # Lower temperature for more consistent scoring
-                    "topP": 0.8,
-                    "topK": 40
-                }
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an expert evaluator for technical assessments. Provide precise numerical scores from 0 to 1 for each criterion."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": 0.2,  # Lower temperature for more consistent scoring
+                "max_tokens": 500
             }
             
             # Make the API request
@@ -67,10 +71,10 @@ class GeminiEvaluator:
             
             # Parse the response
             result = response.json()
-            if "candidates" not in result or not result["candidates"]:
-                raise Exception("No response from Gemini API")
+            if "choices" not in result or not result["choices"]:
+                raise Exception("No response from OpenAI API")
                 
-            evaluation_text = result["candidates"][0]["content"]["parts"][0]["text"]
+            evaluation_text = result["choices"][0]["message"]["content"]
             evaluation = self._parse_enhanced_evaluation(evaluation_text)
             return evaluation
             
@@ -94,16 +98,19 @@ class GeminiEvaluator:
         try:
             # Prepare the request payload
             payload = {
-                "contents": [{
-                    "parts": [{
-                        "text": prompt
-                    }]
-                }],
-                "generationConfig": {
-                    "temperature": 0.2,
-                    "topP": 0.8,
-                    "topK": 40
-                }
+                "model": self.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an expert evaluator for technical assessments. Provide precise numerical scores from 0 to 1 for each criterion."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": 0.2,
+                "max_tokens": 300
             }
             
             # Make the API request
@@ -116,10 +123,10 @@ class GeminiEvaluator:
             
             # Parse the response
             result = response.json()
-            if "candidates" not in result or not result["candidates"]:
-                raise Exception("No response from Gemini API")
+            if "choices" not in result or not result["choices"]:
+                raise Exception("No response from OpenAI API")
                 
-            evaluation_text = result["candidates"][0]["content"]["parts"][0]["text"]
+            evaluation_text = result["choices"][0]["message"]["content"]
             evaluation = self._parse_legacy_evaluation(evaluation_text)
             return evaluation
             
@@ -191,67 +198,94 @@ class GeminiEvaluator:
     
     def _parse_enhanced_evaluation(self, response_text: str) -> Dict[str, float]:
         """
-        Parse the enhanced Gemini API response into structured scores.
+        Parse the enhanced OpenAI API response into structured scores.
         """
         try:
             lines = response_text.strip().split('\n')
             scores = {}
             
             for line in lines:
+                line = line.strip()
                 if ':' in line:
-                    criterion, score = line.split(':')
+                    criterion, score_str = line.split(':', 1)
                     criterion = criterion.strip().lower()
+                    score_str = score_str.strip()
+                    
+                    # Extract numeric score
                     try:
-                        score = float(score.strip())
-                        scores[criterion] = score
+                        score = float(score_str)
+                        if 0 <= score <= 1:
+                            scores[criterion] = score
                     except ValueError:
-                        continue  # Skip lines that don't have valid scores
+                        # Try to extract number from text like "0.8" or "0.8/1"
+                        import re
+                        number_match = re.search(r'(\d+\.?\d*)', score_str)
+                        if number_match:
+                            score = float(number_match.group(1))
+                            if score > 1:  # If score is like "8" instead of "0.8"
+                                score = score / 10
+                            if 0 <= score <= 1:
+                                scores[criterion] = score
             
-            # Calculate total score based on weights
-            total_score = sum(
-                scores.get(criterion, 0) * weight 
-                for criterion, weight in WRITTEN_ANSWER_CRITERIA.items()
-            )
+            # Ensure all expected criteria are present
+            expected_criteria = [
+                "technical accuracy", "problem solving methodology", 
+                "logical thinking", "clarity", "presentation"
+            ]
             
-            return {
-                "technical_accuracy": scores.get("technical accuracy", 0),
-                "problem_solving_methodology": scores.get("problem solving methodology", 0),
-                "logical_thinking": scores.get("logical thinking", 0),
-                "clarity": scores.get("clarity", 0),
-                "presentation": scores.get("presentation", 0),
-                "total_score": total_score
-            }
+            for criterion in expected_criteria:
+                if criterion not in scores:
+                    scores[criterion] = 0.0  # Default score if missing
+            
+            return scores
+            
         except Exception as e:
             raise Exception(f"Failed to parse evaluation response: {str(e)}")
     
     def _parse_legacy_evaluation(self, response_text: str) -> Dict[str, float]:
         """
-        Parse the legacy Gemini API response into structured scores.
+        Parse the legacy OpenAI API response into structured scores.
         """
         try:
             lines = response_text.strip().split('\n')
             scores = {}
             
             for line in lines:
+                line = line.strip()
                 if ':' in line:
-                    criterion, score = line.split(':')
+                    criterion, score_str = line.split(':', 1)
                     criterion = criterion.strip().lower()
+                    score_str = score_str.strip()
+                    
+                    # Extract numeric score
                     try:
-                        score = float(score.strip())
-                        scores[criterion] = score
+                        score = float(score_str)
+                        if 0 <= score <= 1:
+                            scores[criterion] = score
                     except ValueError:
-                        continue  # Skip lines that don't have valid scores
+                        # Try to extract number from text
+                        import re
+                        number_match = re.search(r'(\d+\.?\d*)', score_str)
+                        if number_match:
+                            score = float(number_match.group(1))
+                            if score > 1:  # If score is like "8" instead of "0.8"
+                                score = score / 10
+                            if 0 <= score <= 1:
+                                scores[criterion] = score
             
-            # Calculate total score based on legacy weights
-            total_score = sum(
-                scores.get(criterion, 0) * weight 
-                for criterion, weight in LEGACY_WRITTEN_ANSWER_CRITERIA.items()
-            )
+            # Calculate total score for legacy compatibility
+            total_score = 0.0
+            if "technical accuracy" in scores and "clarity" in scores:
+                total_score = (
+                    scores["technical accuracy"] * LEGACY_WRITTEN_ANSWER_CRITERIA["technical_accuracy"] +
+                    scores["clarity"] * LEGACY_WRITTEN_ANSWER_CRITERIA["clarity"]
+                )
             
             return {
-                "technical_accuracy": scores.get("technical accuracy", 0),
-                "clarity": scores.get("clarity", 0),
+                "technical_accuracy": scores.get("technical accuracy", 0.0),
+                "clarity": scores.get("clarity", 0.0),
                 "total_score": total_score
             }
+            
         except Exception as e:
-            raise Exception(f"Failed to parse evaluation response: {str(e)}") 
+            raise Exception(f"Failed to parse legacy evaluation response: {str(e)}") 

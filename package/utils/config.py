@@ -29,8 +29,8 @@ SCORING_WEIGHTS: Dict[str, float] = {
 # Maximum allowed time for assessment (1 hour in seconds)
 MAX_ALLOWED_TIME: int = 3600
 
-# Gemini API configuration
-GEMINI_MODEL_NAME: str = "gemini-1.5-flash"
+# OpenAI API configuration
+OPENAI_MODEL_NAME: str = "gpt-4o-mini"
 
 # Enhanced written answer evaluation criteria
 WRITTEN_ANSWER_CRITERIA: Dict[str, float] = {

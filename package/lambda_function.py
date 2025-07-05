@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from src.scoring.assessment_score import AssessmentSubmission, WrittenAnswer
 from src.scoring.scoring_algorithm import ScoringAlgorithm
-from src.scoring.gemini_evaluator import GeminiEvaluator
+from src.scoring.openai_evaluator import OpenAIEvaluator
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -14,7 +14,7 @@ load_dotenv()
 
 # Initialize scoring components
 scorer = ScoringAlgorithm()
-evaluator = GeminiEvaluator()
+evaluator = OpenAIEvaluator()
 
 # Initialize DynamoDB
 dynamodb = boto3.resource('dynamodb')
@@ -49,7 +49,7 @@ def validate_participant_name(name):
     
     return True, None
 
-async def async_lambda_handler(event, context):
+def lambda_handler(event, context):
     try:
         # Parse the request body
         body = json.loads(event['body'])
@@ -65,8 +65,9 @@ async def async_lambda_handler(event, context):
                     })
                 }
         
-        # Extract instance_id if provided (optional for backward compatibility)
+        # Extract instance_id and field if provided (optional for backward compatibility)
         instance_id = body.get('instance_id')
+        field = body.get('field')  # New field parameter for field-specific scoring
         
         # Extract and validate participant_name
         participant_name = body['participant_name']
@@ -94,20 +95,8 @@ async def async_lambda_handler(event, context):
             participant_name=participant_name.strip()  # Use validated and cleaned name
         )
         
-        # Run the async scoring function with skill-based scoring enabled and timeout
-        try:
-            # Set a timeout for the entire scoring process
-            score = await asyncio.wait_for(
-                scorer.calculate_total_score(submission, evaluator, use_skill_based_scoring=True),
-                timeout=25.0  # 25 second timeout (leaving 5 seconds for Lambda overhead)
-            )
-        except asyncio.TimeoutError:
-            return {
-                'statusCode': 408,
-                'body': json.dumps({
-                    'error': 'Scoring process timed out. Please try again.'
-                })
-            }
+        # Run the async scoring function with skill-based scoring enabled and field-specific scoring
+        score = asyncio.run(scorer.calculate_total_score(submission, evaluator, use_skill_based_scoring=True, field=field))
         
         # Store the score in DynamoDB
         score_record = {
@@ -154,7 +143,7 @@ async def async_lambda_handler(event, context):
         # Send results to recruitment system webhook if instance_id is provided
         if instance_id and score.skill_scores is not None:
             try:
-                notify_recruitment_system(instance_id, score.skill_scores, score_record)
+                notify_recruitment_system(instance_id, score.skill_scores, score_record, field)
             except Exception as webhook_error:
                 print(f"Warning: Failed to send webhook to recruitment system: {webhook_error}")
                 # Don't fail the assessment if webhook fails
@@ -200,14 +189,11 @@ async def async_lambda_handler(event, context):
             })
         }
 
-def lambda_handler(event, context):
-    """Wrapper to handle async Lambda function"""
-    return asyncio.run(async_lambda_handler(event, context))
-
-def notify_recruitment_system(instance_id: str, skill_scores: dict, score_record: dict):
+def notify_recruitment_system(instance_id: str, skill_scores: dict, score_record: dict, field: str = None):
     """
     Send assessment results to the recruitment system webhook.
     Maps skill scores to the expected format for the recruitment system.
+    Includes field-specific scores if field is provided.
     """
     try:
         # Map skill scores to the expected format
@@ -226,13 +212,23 @@ def notify_recruitment_system(instance_id: str, skill_scores: dict, score_record
             'time_elapsed': score_record.get('time_elapsed', 0)
         }
         
+        # Add field-specific scores if field is provided
+        if field and field == 'electrical':
+            webhook_payload['skill_scores'] = {
+                'circuitDesign': float(skill_scores.get('circuit_design', 0.0)),
+                'powerSystems': float(skill_scores.get('power_systems', 0.0)),
+                'controlSystems': float(skill_scores.get('control_systems', 0.0)),
+                'electronics': float(skill_scores.get('electronics', 0.0)),
+                'signalProcessing': float(skill_scores.get('signal_processing', 0.0))
+            }
+        
         # Send to recruitment system webhook
-        webhook_url = "https://yourdomain.com/api/assessment/webhook"  # Update with your actual domain
+        webhook_url = "https://recruitbackend-production.up.railway.app/api/applications/webhook"  # Railway production URL
         response = requests.post(
             webhook_url,
             json=webhook_payload,
             headers={'Content-Type': 'application/json'},
-            timeout=10
+            timeout=30
         )
         
         if response.status_code == 200:

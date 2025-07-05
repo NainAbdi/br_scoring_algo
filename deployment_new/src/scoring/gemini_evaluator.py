@@ -2,7 +2,7 @@ import os
 import json
 from typing import Dict
 import requests
-from utils.config import GEMINI_MODEL_NAME, WRITTEN_ANSWER_CRITERIA, LEGACY_WRITTEN_ANSWER_CRITERIA
+from ..utils.config import GEMINI_MODEL_NAME, WRITTEN_ANSWER_CRITERIA, LEGACY_WRITTEN_ANSWER_CRITERIA
 
 class GeminiEvaluator:
     def __init__(self, api_key: str = None):
